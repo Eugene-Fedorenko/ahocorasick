@@ -161,6 +161,65 @@ func (da *Cedar) Get(key []byte) (value interface{}, err error) {
 	return nil, ErrNoValue
 }
 
+// FindOne works like Get but interpret node label * as wildcard
+func (da *Cedar) FindOne(key []byte) (value interface{}, err error) {
+	tnid := -1
+	snid := -1
+	spos := 0
+	nid := 0
+	e := len(key) - 1
+
+	for i := 0; i <= e; i++ {
+		b := key[i]
+		if da.hasLabel(nid, b) {
+			nid, _ = da.child(nid, b)
+			if da.isEnd(nid) {
+				if i == e {
+					tnid = nid
+					break
+				} else if snid >= 0 {
+					nid = snid
+					i = spos
+					spos++
+				}
+			}
+		} else if da.hasLabel(nid, '*') {
+			nid, _ = da.child(nid, '*')
+			snid = nid
+			spos = i
+			i--
+			if da.isEnd(nid) {
+				tnid = nid
+				break
+			}
+		} else if snid >= 0 {
+			nid = snid
+		} else {
+			return nil, ErrNoPath
+		}
+	}
+
+	if tnid == -1 && da.hasLabel(nid, '*') {
+		nid, _ = da.child(nid, '*')
+		if da.isEnd(nid) {
+			tnid = nid
+		}
+	}
+
+	if tnid == -1 {
+		return nil, ErrNoPath
+	}
+
+	vk, err := da.vKeyOf(tnid)
+	if err != nil {
+		return nil, ErrNoValue
+	}
+	if v, ok := da.vals[vk]; ok {
+		return v.Value, nil
+	}
+	return nil, ErrNoValue
+}
+
 // PrefixMatch returns a list of at most `num` nodes which match the prefix of the key.
 // If `num` is 0, it returns all matches.
 // For example, if the following keys were inserted:
