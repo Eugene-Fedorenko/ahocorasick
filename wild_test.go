@@ -22,14 +22,17 @@ func TestFindOne(t *testing.T) {
 
 	if e != nil {
 		t.Error(e)
+		return
 	}
 
 	ik, ok := k.(int)
 	if !ok {
 		t.Fail()
+		return
 	}
 
 	if ik != 100 {
 		t.Fail()
+		return
 	}
 }
