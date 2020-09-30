@@ -9,7 +9,7 @@ func TestFindOne(t *testing.T) {
 
 	words := []string{
 		"aaa*bbb*ccc",
-		"*",
+		"aaabbbccc",
 	}
 
 	for i, word := range words {

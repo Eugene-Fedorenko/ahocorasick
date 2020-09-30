@@ -1,5 +1,7 @@
 package cedar
 
+import "sync"
+
 // Status reports the following statistics of the cedar:
 //	keys:		number of keys that are in the cedar,
 //	nodes:		number of trie nodes (slots in the base array) has been taken,
@@ -161,8 +163,33 @@ func (da *Cedar) Get(key []byte) (value interface{}, err error) {
 	return nil, ErrNoValue
 }
 
-// FindOne works like Get but interpret node label * as wildcard
-func (da *Cedar) FindOne(key []byte) (value interface{}, err error) {
+type snidpos struct {
+	nid, pos int
+}
+
+var ssPool = sync.Pool{New: func() interface{} {
+	a := make([]*snidpos, 0, 30)
+	return &a
+}}
+
+func getsnidpos(a *[]*snidpos) *snidpos {
+	l := len(*a)
+
+	if l == cap(*a) {
+		*a = append(*a, new(snidpos))
+	} else {
+		l++
+		*a = (*a)[:l]
+	}
+
+	if (*a)[l-1] == nil {
+		(*a)[l-1] = new(snidpos)
+	}
+
+	return (*a)[l-1]
+}
+
+/*func (da *Cedar) FindOne(key []byte) (value interface{}, err error) {
 	tnid := -1
 	snid := -1
 	spos := 0
@@ -172,6 +199,11 @@ func (da *Cedar) FindOne(key []byte) (value interface{}, err error) {
 	for i := 0; i <= e; i++ {
 		b := key[i]
 		if da.hasLabel(nid, b) {
+			if da.hasLabel(nid, '*') {
+				snid, _ = da.child(nid, '*')
+				spos = i
+			}
+
 			nid, _ = da.child(nid, b)
 			if da.isEnd(nid) {
 				if i == e {
@@ -194,6 +226,8 @@ func (da *Cedar) FindOne(key []byte) (value interface{}, err error) {
 			}
 		} else if snid >= 0 {
 			nid = snid
+			i = spos
+			spos++
 		} else {
 			return nil, ErrNoPath
 		}
@@ -203,6 +237,76 @@ func (da *Cedar) FindOne(key []byte) (value interface{}, err error) {
 		nid, _ = da.child(nid, '*')
 		if da.isEnd(nid) {
 			tnid = nid
+		}
+	}
+
+	if tnid == -1 {
+		return nil, ErrNoPath
+	}
+
+	vk, err := da.vKeyOf(tnid)
+	if err != nil {
+		return nil, ErrNoValue
+	}
+	if v, ok := da.vals[vk]; ok {
+		return v.Value, nil
+	}
+	return nil, ErrNoValue
+}*/
+
+// FindOne works like Get but interpret node label * as wildcard
+func (da *Cedar) FindOne(key []byte) (value interface{}, err error) {
+	tnid := -1
+	nid := 0
+	e := len(key) - 1
+	var sp *snidpos
+
+	ss := ssPool.Get().(*[]*snidpos)
+	defer func() {
+		*ss = (*ss)[:0]
+		ssPool.Put(ss)
+	}()
+
+	sp = getsnidpos(ss)
+	sp.nid = 0
+	sp.pos = 0
+
+ssLoop:
+	for len(*ss) > 0 {
+		sp = (*ss)[len(*ss)-1]
+		nid = sp.nid
+
+		if sp.nid == 0 {
+			*ss = (*ss)[:len(*ss)-1]
+		}
+
+		for i := sp.pos; i <= e; i++ {
+			if da.hasLabel(nid, '*') {
+				sp := getsnidpos(ss)
+				sp.pos = i + 1
+				sp.nid, _ = da.child(nid, '*')
+				if da.isEnd(sp.nid) {
+					tnid = sp.nid
+					break ssLoop
+				}
+			}
+
+			b := key[i]
+			if da.hasLabel(nid, b) {
+				nid, _ = da.child(nid, b)
+				if da.isEnd(nid) && i == e {
+					tnid = nid
+					break ssLoop
+				}
+			} else if sp.nid > 0 {
+				sp.pos++
+				if sp.pos > e {
+					*ss = (*ss)[:len(*ss)-1]
+				}
+				continue ssLoop
+			} else {
+				break
+			}
 		}
 	}
 
