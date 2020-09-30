@@ -1,6 +1,8 @@
 package cedar
 
-import "sync"
+import (
+	"sync"
+)
 
 // Status reports the following statistics of the cedar:
 //	keys:		number of keys that are in the cedar,
@@ -172,6 +174,11 @@ var ssPool = sync.Pool{New: func() interface{} {
 	return &a
 }}
 
+var mPool = sync.Pool{New: func() interface{} {
+	a := make(map[int]struct{})
+	return &a
+}}
+
 func getsnidpos(a *[]*snidpos) *snidpos {
 	l := len(*a)
 
@@ -271,17 +278,28 @@ func (da *Cedar) FindOne(key []byte) (value interface{}, err error) {
 	sp.nid = 0
 	sp.pos = 0
 
+	m := mPool.Get().(*map[int]struct{})
+	defer func() {
+		for k := range *m {
+			delete(*m, k)
+		}
+		mPool.Put(m)
+	}()
+
 ssLoop:
 	for len(*ss) > 0 {
 		sp = (*ss)[len(*ss)-1]
 		nid = sp.nid
+		pos := sp.pos
 
 		if sp.nid == 0 {
 			*ss = (*ss)[:len(*ss)-1]
+			sp = nil
 		}
 
-		for i := sp.pos; i <= e; i++ {
-			if da.hasLabel(nid, '*') {
+		for i := pos; i <= e; i++ {
+			if _, ok := (*m)[nid]; !ok && da.hasLabel(nid, '*') {
+				(*m)[nid] = struct{}{}
 				sp := getsnidpos(ss)
 				sp.pos = i + 1
 				sp.nid, _ = da.child(nid, '*')
@@ -294,16 +312,21 @@ ssLoop:
 			b := key[i]
 			if da.hasLabel(nid, b) {
 				nid, _ = da.child(nid, b)
-				if da.isEnd(nid) && i == e {
-					tnid = nid
-					break ssLoop
+				if i == e {
+					if da.isEnd(nid) {
+						tnid = nid
+						break ssLoop
+					} else {
+						*ss = (*ss)[:len(*ss)-1]
+						break
+					}
 				}
-			} else if sp.nid > 0 {
+			} else if sp != nil {
 				sp.pos++
 				if sp.pos > e {
 					*ss = (*ss)[:len(*ss)-1]
 				}
-				continue ssLoop
+				break
 			} else {
 				break
 			}
