@@ -354,6 +354,117 @@ ssLoop:
 	return nil, ErrNoValue
 }
 
+func (da *Cedar) FindAll(key []byte, valCb func(val interface{})) {
+	nid := 0
+	e := len(key) - 1
+	var sp *snidpos
+
+	ss := ssPool.Get().(*[]*snidpos)
+	defer func() {
+		*ss = (*ss)[:0]
+		ssPool.Put(ss)
+	}()
+
+	sp = getsnidpos(ss)
+	sp.nid = 0
+	sp.pos = 0
+
+	m := mPool.Get().(*map[int]struct{})
+	defer func() {
+		for k := range *m {
+			delete(*m, k)
+		}
+		mPool.Put(m)
+	}()
+
+ssLoop:
+	for len(*ss) > 0 {
+		sp = (*ss)[len(*ss)-1]
+		nid = sp.nid
+		pos := sp.pos
+
+		if sp.nid == 0 {
+			*ss = (*ss)[:len(*ss)-1]
+			sp = nil
+		}
+
+		for i := pos; i <= e; i++ {
+			if _, ok := (*m)[nid]; !ok && da.hasLabel(nid, '*') {
+				(*m)[nid] = struct{}{}
+				spnid, _ := da.child(nid, '*')
+				if da.isEnd(spnid) {
+					vk, err := da.vKeyOf(spnid)
+					if err != nil {
+						continue ssLoop
+					}
+					if v, ok := da.vals[vk]; ok {
+						valCb(v.Value)
+					}
+					continue ssLoop
+				} else if i < e {
+					sp := getsnidpos(ss)
+					sp.pos = i + 1
+					sp.nid = spnid
+				}
+			}
+
+			b := key[i]
+			if b != '*' && da.hasLabel(nid, b) {
+				nid, _ = da.child(nid, b)
+				if i == e {
+					if da.isEnd(nid) {
+						if sp != nil {
+							*ss = (*ss)[:len(*ss)-1]
+						}
+
+						snid := nid
+						for {
+							if !da.hasLabel(snid, '*') {
+								break
+							}
+							snid, _ = da.child(snid, '*')
+							if da.isEnd(snid) {
+								vk, err := da.vKeyOf(snid)
+								if err != nil {
+									continue
+								}
+								if v, ok := da.vals[vk]; ok {
+									valCb(v.Value)
+								}
+							}
+						}
+
+						vk, err := da.vKeyOf(nid)
+						if err != nil {
+							continue ssLoop
+						}
+						if v, ok := da.vals[vk]; ok {
+							valCb(v.Value)
+						}
+						continue ssLoop
+					}
+					if sp != nil {
+						sp.pos++
+						if sp.pos > e {
+							*ss = (*ss)[:len(*ss)-1]
+						}
+					}
+				}
+			} else if sp != nil {
+				sp.pos++
+				if sp.pos > e {
+					*ss = (*ss)[:len(*ss)-1]
+				}
+				break
+			} else {
+				break
+			}
+		}
+	}
+
+	return
+}
+
 // PrefixMatch returns a list of at most `num` nodes which match the prefix of the key.
 // If `num` is 0, it returns all matches.
 // For example, if the following keys were inserted:
