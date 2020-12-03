@@ -329,6 +329,19 @@ ssLoop:
 						if sp != nil {
 							*ss = (*ss)[:len(*ss)-1]
 						}
+
+						snid := nid
+						for {
+							if !da.hasLabel(snid, '*') {
+								break
+							}
+							snid, _ = da.child(snid, '*')
+							if da.isEnd(snid) {
+								tnid = snid
+								break ssLoop
+							}
+						}
+
 						break
 					}
 				}
@@ -415,27 +428,28 @@ ssLoop:
 			b := key[i]
 			if b != '*' && da.hasLabel(nid, b) {
 				nid, _ = da.child(nid, b)
+
 				if i == e {
+					snid := nid
+					for {
+						if !da.hasLabel(snid, '*') {
+							break
+						}
+						snid, _ = da.child(snid, '*')
+						if da.isEnd(snid) {
+							vk, err := da.vKeyOf(snid)
+							if err != nil {
+								continue
+							}
+							if v, ok := da.vals[vk]; ok {
+								valCb(v.Value)
+							}
+						}
+					}
+
 					if da.isEnd(nid) {
 						if sp != nil {
 							*ss = (*ss)[:len(*ss)-1]
-						}
-
-						snid := nid
-						for {
-							if !da.hasLabel(snid, '*') {
-								break
-							}
-							snid, _ = da.child(snid, '*')
-							if da.isEnd(snid) {
-								vk, err := da.vKeyOf(snid)
-								if err != nil {
-									continue
-								}
-								if v, ok := da.vals[vk]; ok {
-									valCb(v.Value)
-								}
-							}
 						}
 
 						vk, err := da.vKeyOf(nid)
@@ -447,6 +461,7 @@ ssLoop:
 						}
 						continue ssLoop
 					}
+
 					if sp != nil {
 						sp.pos++
 						if sp.pos > e {
