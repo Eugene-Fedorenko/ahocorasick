@@ -307,24 +307,28 @@ ssLoop:
 		for i := pos; i <= e; i++ {
 			if _, ok := (*m)[nid]; !ok && da.hasLabel(nid, '*') {
 				(*m)[nid] = struct{}{}
-				sp := getsnidpos(ss)
-				sp.pos = i + 1
-				sp.nid, _ = da.child(nid, '*')
-				if da.isEnd(sp.nid) {
-					tnid = sp.nid
+				spnid, _ := da.child(nid, '*')
+				if da.isEnd(spnid) {
+					tnid = spnid
 					break ssLoop
+				} else if i < e {
+					sp := getsnidpos(ss)
+					sp.pos = i + 1
+					sp.nid = spnid
 				}
 			}
 
 			b := key[i]
-			if da.hasLabel(nid, b) {
+			if b != '*' && da.hasLabel(nid, b) {
 				nid, _ = da.child(nid, b)
 				if i == e {
 					if da.isEnd(nid) {
 						tnid = nid
 						break ssLoop
 					} else {
-						*ss = (*ss)[:len(*ss)-1]
+						if sp != nil {
+							*ss = (*ss)[:len(*ss)-1]
+						}
 						break
 					}
 				}
