@@ -371,7 +371,7 @@ ssLoop:
 	return nil, ErrNoValue
 }
 
-func (da *Cedar) FindAll(key []byte, valCb func(val interface{})) {
+func (da *Cedar) FindAll(key []byte, valCb func(val interface{}, rule []byte)) {
 	nid := 0
 	e := len(key) - 1
 	var sp *snidpos
@@ -415,7 +415,8 @@ ssLoop:
 						continue ssLoop
 					}
 					if v, ok := da.vals[vk]; ok {
-						valCb(v.Value)
+						rule, _ := da.Key(spnid)
+						valCb(v.Value, rule)
 					}
 					continue ssLoop
 				} else if i < e {
@@ -442,7 +443,8 @@ ssLoop:
 								continue
 							}
 							if v, ok := da.vals[vk]; ok {
-								valCb(v.Value)
+								rule, _ := da.Key(snid)
+								valCb(v.Value, rule)
 							}
 						}
 					}
@@ -457,7 +459,8 @@ ssLoop:
 							continue ssLoop
 						}
 						if v, ok := da.vals[vk]; ok {
-							valCb(v.Value)
+							rule, _ := da.Key(nid)
+							valCb(v.Value, rule)
 						}
 						continue ssLoop
 					}
